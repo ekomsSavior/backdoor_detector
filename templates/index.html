@@ -1,0 +1,163 @@
+
+        <!DOCTYPE html>
+        <html lang="en">
+        <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Backdoor Detector Web Interface</title>
+            <style>
+                body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background: #f5f5f5; }
+                .container { max-width: 1200px; margin: 0 auto; }
+                .header { background: #333; color: white; padding: 20px; border-radius: 5px; margin-bottom: 20px; }
+                .card { background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); margin-bottom: 20px; }
+                .form-group { margin-bottom: 15px; }
+                label { display: block; margin-bottom: 5px; font-weight: bold; }
+                input[type="text"], input[type="number"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 3px; }
+                button { background: #4CAF50; color: white; border: none; padding: 10px 20px; border-radius: 3px; cursor: pointer; }
+                button:hover { background: #45a049; }
+                .progress { height: 20px; background: #f0f0f0; border-radius: 10px; overflow: hidden; margin: 10px 0; }
+                .progress-bar { height: 100%; background: #4CAF50; transition: width 0.3s; }
+                .scan-item { border: 1px solid #ddd; padding: 10px; margin: 5px 0; border-radius: 3px; }
+                .scan-status { display: inline-block; padding: 3px 8px; border-radius: 3px; font-size: 12px; }
+                .status-running { background: #ffc107; }
+                .status-completed { background: #28a745; color: white; }
+                .status-failed { background: #dc3545; color: white; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1> Backdoor Detector Web Interface</h1>
+                    <p>Scan for backdoors and vulnerabilities in software projects</p>
+                </div>
+                
+                <div class="card">
+                    <h2>New Scan</h2>
+                    <form id="scanForm">
+                        <div class="form-group">
+                            <label for="target">Target Directory:</label>
+                            <input type="text" id="target" name="target" placeholder="/path/to/project" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="yara_rules">YARA Rules Directory:</label>
+                            <input type="text" id="yara_rules" name="yara_rules" placeholder="yara_rules" value="yara_rules">
+                        </div>
+                        <div class="form-group">
+                            <label for="timeout">Runtime Timeout (seconds):</label>
+                            <input type="number" id="timeout" name="timeout" value="30" min="10" max="300">
+                        </div>
+                        <button type="submit">Start Scan</button>
+                    </form>
+                </div>
+                
+                <div class="card">
+                    <h2>Active Scans</h2>
+                    <div id="scansList"></div>
+                </div>
+                
+                <div class="card">
+                    <h2>Scan Results</h2>
+                    <div id="results"></div>
+                </div>
+            </div>
+            
+            <script>
+                let activeScans = {};
+                
+                document.getElementById('scanForm').addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const formData = {
+                        target: document.getElementById('target').value,
+                        yara_rules_dir: document.getElementById('yara_rules').value,
+                        timeout: document.getElementById('timeout').value
+                    };
+                    
+                    try {
+                        const response = await fetch('/api/scan', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(formData)
+                        });
+                        
+                        const data = await response.json();
+                        
+                        if (data.scan_id) {
+                            activeScans[data.scan_id] = { status: 'running' };
+                            updateScansList();
+                            pollScanStatus(data.scan_id);
+                        }
+                    } catch (error) {
+                        console.error('Error starting scan:', error);
+                    }
+                });
+                
+                async function pollScanStatus(scanId) {
+                    try {
+                        const response = await fetch(`/api/scan/${scanId}`);
+                        const data = await response.json();
+                        
+                        activeScans[scanId] = data;
+                        updateScansList();
+                        
+                        if (data.status === 'running') {
+                            setTimeout(() => pollScanStatus(scanId), 2000);
+                        } else if (data.status === 'completed') {
+                            showResults(scanId, data);
+                        }
+                    } catch (error) {
+                        console.error('Error polling scan status:', error);
+                    }
+                }
+                
+                function updateScansList() {
+                    const scansList = document.getElementById('scansList');
+                    scansList.innerHTML = '';
+                    
+                    Object.entries(activeScans).forEach(([scanId, scanData]) => {
+                        const div = document.createElement('div');
+                        div.className = 'scan-item';
+                        div.innerHTML = `
+                            <strong>${scanId}</strong>
+                            <span class="scan-status status-${scanData.status}">${scanData.status.toUpperCase()}</span>
+                            ${scanData.status === 'completed' ? 
+                                `<a href="/api/report/${scanId}" target="_blank">View Report</a>` : ''}
+                        `;
+                        scansList.appendChild(div);
+                    });
+                }
+                
+                function showResults(scanId, scanData) {
+                    const resultsDiv = document.getElementById('results');
+                    resultsDiv.innerHTML = `
+                        <h3>Scan ${scanId} Completed</h3>
+                        <p>Total findings: ${scanData.stats?.total || 0}</p>
+                        <p><a href="/api/report/${scanId}" target="_blank">Open Detailed Report</a></p>
+                    `;
+                }
+                
+                // Load existing scans on page load
+                async function loadScans() {
+                    try {
+                        const response = await fetch('/api/scans');
+                        const data = await response.json();
+                        
+                        data.scans.forEach(scan => {
+                            activeScans[scan.id] = scan;
+                            if (scan.status === 'running') {
+                                pollScanStatus(scan.id);
+                            }
+                        });
+                        
+                        updateScansList();
+                    } catch (error) {
+                        console.error('Error loading scans:', error);
+                    }
+                }
+                
+                // Initialize
+                loadScans();
+            </script>
+        </body>
+        </html>
+        
