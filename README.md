@@ -5,6 +5,7 @@ install:
 clone in:
 ```bash
 git clone https://github.com/ekomsSavior/backdoor_detector.git
+cd backdoor_detector
 ```
 
 install trivy:
