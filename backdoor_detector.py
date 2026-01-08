@@ -148,14 +148,13 @@ class BackdoorDetector:
         # Create output directory and parent directories if needed
         self.output_dir.mkdir(parents=True, exist_ok=True)
         
+        # Clean up old YARA rules and create new ones
+        self._cleanup_and_create_yara_rules()
+        
         # Initialize YARA rules if available
         self.yara_rules = None
         if HAS_YARA:
             self._load_yara_rules()
-        
-        # Load default YARA rules if directory doesn't exist
-        if not self.yara_rules_dir.exists():
-            self._create_default_yara_rules()
         
         # Define suspicious patterns
         self.suspicious_patterns = {
@@ -171,42 +170,26 @@ class BackdoorDetector:
             "long_strings": r"['\"][^'\"]{500,}['\"]",
         }
 
-    def _load_yara_rules(self):
-        """Load YARA rules from directory."""
-        if not HAS_YARA:
-            logger.warning("YARA not installed. Install with: pip install yara-python")
-            return
-            
-        if not self.yara_rules_dir.exists():
-            logger.warning(f"YARA rules directory not found: {self.yara_rules_dir}")
-            return
-            
-        try:
-            # Compile all YARA files
-            yara_files = list(self.yara_rules_dir.glob("*.yar")) + list(self.yara_rules_dir.glob("*.yara"))
-            
-            if not yara_files:
-                logger.warning(f"No YARA rule files found in {self.yara_rules_dir}")
-                return
-                
-            rules_dict = {}
-            for yara_file in yara_files:
-                try:
-                    rules_dict[str(yara_file)] = str(yara_file)
-                except Exception as e:
-                    logger.error(f"Error loading YARA rule {yara_file}: {e}")
-            
-            if rules_dict:
-                self.yara_rules = yara.compile(filepaths=rules_dict)
-                logger.info(f"Loaded {len(rules_dict)} YARA rules")
-        except Exception as e:
-            logger.error(f"Failed to load YARA rules: {e}")
-
-    def _create_default_yara_rules(self):
-        """Create default YARA rules if directory doesn't exist."""
+    def _cleanup_and_create_yara_rules(self):
+        """Clean up old YARA rules and create new ones with correct syntax."""
+        # Create directory if it doesn't exist
         self.yara_rules_dir.mkdir(parents=True, exist_ok=True)
         
-        default_rules = {
+        # Clean up any existing .yar or .yara files
+        for ext in ['.yar', '.yara']:
+            for old_file in self.yara_rules_dir.glob(f"*{ext}"):
+                try:
+                    old_file.unlink()
+                    logger.info(f"Removed old YARA rule: {old_file}")
+                except Exception as e:
+                    logger.warning(f"Failed to remove {old_file}: {e}")
+        
+        # Create new YARA rules with correct syntax
+        self._create_correct_yara_rules()
+
+    def _create_correct_yara_rules(self):
+        """Create YARA rules with correct syntax (no curly braces for text strings)."""
+        correct_rules = {
             "backdoor_signatures.yar": """rule backdoor_indicator {
     meta:
         description = "Common backdoor signatures"
@@ -217,7 +200,7 @@ class BackdoorDetector:
         $bind = "bind("
         $listen = "listen("
         $accept = "accept("
-        $shell = /bin[/\\\\]?(?:sh|bash|cmd|powershell)/
+        $shell = /bin[\\/\\\\]?(?:sh|bash|cmd|powershell)/
         $b1 = "backdoor"
         $b2 = "shell"
         $b3 = "reverse"
@@ -287,11 +270,11 @@ rule persistence_mechanisms {
         description = "Common persistence mechanisms"
         severity = "MEDIUM"
     strings:
-        $registry_run = "CurrentVersion\\\\\\\\Run"
+        $registry_run = "CurrentVersion\\\\Run"
         $service_install = "CreateService"
         $cron_job = "cron"
         $launch_agent = "LaunchAgent"
-        $startup_folder = "Start Menu\\\\\\\\Programs\\\\\\\\Startup"
+        $startup_folder = "Start Menu\\\\Programs\\\\Startup"
         $scheduled_task = "CreateTask"
     condition:
         any of them
@@ -347,10 +330,46 @@ rule anti_debugging {
 """
         }
         
-        for filename, content in default_rules.items():
+        for filename, content in correct_rules.items():
             rule_file = self.yara_rules_dir / filename
             rule_file.write_text(content)
-            logger.info(f"Created default YARA rule: {rule_file}")
+            logger.info(f"Created corrected YARA rule: {rule_file}")
+
+    def _load_yara_rules(self):
+        """Load YARA rules from directory."""
+        if not HAS_YARA:
+            logger.warning("YARA not installed. Install with: pip install yara-python")
+            return
+            
+        if not self.yara_rules_dir.exists():
+            logger.warning(f"YARA rules directory not found: {self.yara_rules_dir}")
+            return
+            
+        try:
+            # Compile all YARA files
+            yara_files = list(self.yara_rules_dir.glob("*.yar")) + list(self.yara_rules_dir.glob("*.yara"))
+            
+            if not yara_files:
+                logger.warning(f"No YARA rule files found in {self.yara_rules_dir}")
+                return
+                
+            rules_dict = {}
+            for yara_file in yara_files:
+                try:
+                    rules_dict[str(yara_file)] = str(yara_file)
+                    logger.info(f"Loading YARA rule: {yara_file}")
+                except Exception as e:
+                    logger.error(f"Error loading YARA rule {yara_file}: {e}")
+            
+            if rules_dict:
+                self.yara_rules = yara.compile(filepaths=rules_dict)
+                logger.info(f"Successfully loaded {len(rules_dict)} YARA rules")
+        except yara.SyntaxError as e:
+            logger.error(f"YARA syntax error: {e}")
+            logger.error("This usually means there's a syntax error in your YARA rules.")
+            logger.error("Check your YARA rule files for correct syntax.")
+        except Exception as e:
+            logger.error(f"Failed to load YARA rules: {e}")
 
     def scan_with_yara(self) -> List[Dict]:
         """Scan files using YARA rules."""
