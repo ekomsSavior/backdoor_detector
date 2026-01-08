@@ -900,7 +900,7 @@ rule anti_debugging {
         <body>
             <div class="container">
                 <div class="header">
-                    <h1>🔍 Backdoor Detection Scan Report</h1>
+                    <h1> Backdoor Detection Scan Report</h1>
                     <p class="timestamp">Scan ID: {data['scan_id']}</p>
                     <p class="timestamp">Target: {data['target']}</p>
                     <p class="timestamp">Scan started: {data['start_time']}</p>
@@ -909,7 +909,7 @@ rule anti_debugging {
                 </div>
                 
                 <div class="summary">
-                    <h2>📊 Summary</h2>
+                    <h2> Summary</h2>
                     <div class="stats-grid">
         """
         
@@ -954,7 +954,7 @@ rule anti_debugging {
                 </div>
                 
                 <div id="findings-section">
-                    <h2>🔎 Findings</h2>
+                    <h2> Findings</h2>
         """
         
         # Add findings
@@ -997,7 +997,7 @@ rule anti_debugging {
                 </div>
                 
                 <div class="review-checklist">
-                    <h2>📋 Manual Review Checklist</h2>
+                    <h2> Manual Review Checklist</h2>
         """
         
         # Add manual review checklist
@@ -1624,7 +1624,7 @@ def start_web_interface(host='127.0.0.1', port=5000):
             <body>
                 <div class="container">
                     <div class="header">
-                        <h1>🔍 Backdoor Detector Web Interface</h1>
+                        <h1> Backdoor Detector Web Interface</h1>
                         <p>Scan for backdoors and vulnerabilities in software projects</p>
                     </div>
                     
